@@ -11,7 +11,7 @@ from bitrat.types import PathType
 class Record:
     path: str
     digest: bytes
-    mtime: float
+    modified: float
 
 
 def get_database(path: PathType) -> sqlite3.Connection:
@@ -22,26 +22,26 @@ def get_database(path: PathType) -> sqlite3.Connection:
     # Initialize database
     connection = sqlite3.connect(path)
     cursor = connection.cursor()
-    cursor.execute("CREATE TABLE records (path TEXT PRIMARY KEY, hash BLOB, mtime REAL)")
+    cursor.execute("CREATE TABLE records (path TEXT PRIMARY KEY, hash BLOB, modified REAL)")
     connection.commit()
     return connection
 
 
-def update_record(cursor: sqlite3.Cursor, path: str, digest: bytes, mtime: float) -> None:
-    cursor.execute("INSERT OR REPLACE INTO records(path, hash, mtime) VALUES (?, ?, ?)", (path, digest, mtime))
+def update_record(cursor: sqlite3.Cursor, path: str, digest: bytes, modified: float) -> None:
+    cursor.execute("INSERT OR REPLACE INTO records(path, hash, modified) VALUES (?, ?, ?)", (path, digest, modified))
 
 
 def delete_record(cursor: sqlite3.Cursor, path: str) -> None:
     cursor.execute("DELETE FROM records WHERE path=?", (path,))
 
 
-def record_exists(cursor: sqlite3.Cursor, path: str) -> bool:
+def has_record(cursor: sqlite3.Cursor, path: str) -> bool:
     cursor.execute("SELECT EXISTS(SELECT 1 FROM records WHERE path=? LIMIT 1)", (path,))
     return cursor.fetchone()[0] == 1
 
 
 def yield_records(cursor: sqlite3.Cursor) -> T.Generator[Record, None, None]:
-    cursor.execute("SELECT path, hash, mtime FROM records")
+    cursor.execute("SELECT path, hash, modified FROM records")
     while chunk := cursor.fetchmany():
         for record in chunk:
             yield Record(*record)

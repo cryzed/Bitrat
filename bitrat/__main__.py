@@ -16,7 +16,7 @@ from bitrat.database import (
     delete_record,
     get_database,
     get_total_records,
-    record_exists,
+    has_record,
     update_record,
     yield_records,
 )
@@ -41,47 +41,57 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     database_cursor = database.cursor()
     pool = concurrent.futures.ProcessPoolExecutor(max_workers=arguments.workers)
     exit_code = ExitCode.Success
+    changes = 0
 
-    # Check against files in database
-    check_futures: T.Dict[concurrent.futures.Future, Record] = {}
-    total_records = get_total_records(database_cursor)
-    print(f"- Checking against {total_records} records from {str(database_path)!r}...")
+    if arguments.check:
+        # Check against files in database
+        check_futures: T.Dict[concurrent.futures.Future, Record] = {}
+        total_records = get_total_records(database_cursor)
+        print(f"Checking against {total_records} records from {str(database_path)!r}...")
+        for record in yield_records(database_cursor):
+            record_path = root_path / record.path
+            if not record_path.is_file():
+                print(f"\t- Removing record for {record.path!r}, no such file")
+                delete_record(database_cursor, record.path)
+                changes += 1
+                continue
 
-    for record in yield_records(database_cursor):
-        record_path = root_path / record.path
-        if not record_path.is_file():
-            print(f"\t- Removing record for {record.path!r}, no such file")
-            delete_record(database_cursor, record.path)
-            continue
+            future = pool.submit(calculate_hash, record_path, arguments.hash_algorithm, arguments.chunk_size)
+            check_futures[future] = record
 
-        future = pool.submit(calculate_hash, record_path, arguments.hash_algorithm, arguments.chunk_size)
-        check_futures[future] = record
+            if changes % arguments.save_every == 0:
+                database.commit()
 
-    future_count = len(check_futures)
-    for index, future in enumerate(concurrent.futures.as_completed(check_futures), start=1):
-        record = check_futures[future]
-        record_path = root_path / record.path
-        digest = future.result()
-        mtime = record_path.stat().st_mtime
-        hexdigest = binascii.hexlify(digest).decode("ASCII")
+        future_count = len(check_futures)
+        for index, future in enumerate(concurrent.futures.as_completed(check_futures), start=1):
+            record = check_futures[future]
+            record_path = root_path / record.path
+            digest = future.result()
+            modified = record_path.stat().st_mtime
+            hexdigest = binascii.hexlify(digest).decode("ASCII")
 
-        if record.mtime != mtime:
-            print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest}")
-            update_record(database_cursor, record.path, digest, mtime)
-        elif record.digest != digest:
-            record_hexdigest = binascii.hexlify(record.digest).decode("ASCII")
-            record_date = datetime.fromtimestamp(record.mtime)
-            date = datetime.fromtimestamp(mtime)
-            print(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
-            print(f"\t\tRecorded: {record_hexdigest!r} at {record_date}")
-            print(f"\t\tCurrent:  {hexdigest!r} at {date}")
-            exit_code = ExitCode.Failure
+            if record.modified != modified:
+                print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest}")
+                update_record(database_cursor, record.path, digest, modified)
+                changes += 1
+            elif record.digest != digest:
+                record_hexdigest = binascii.hexlify(record.digest).decode("ASCII")
+                record_date = datetime.fromtimestamp(record.modified)
+                date = datetime.fromtimestamp(modified)
+                print(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
+                print(f"\t\tRecorded: {record_hexdigest!r} at {record_date}")
+                print(f"\t\tCurrent:  {hexdigest!r} at {date}")
+                exit_code = ExitCode.Failure
 
-        del check_futures[future]
+            if changes % arguments.save_every == 0:
+                database.commit()
+                changes += 1
+
+            del check_futures[future]
 
     # Check for new files
     update_futures: T.Dict[concurrent.futures.Future, pathlib.Path] = {}
-    print(f"- Checking for new files in {str(root_path)!r}...")
+    print(f"Checking for new files in {str(root_path)!r}...")
     for path in root_path.rglob("*"):
         if path == database_path:
             continue
@@ -90,7 +100,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
             continue
 
         relative_path = path.relative_to(root_path)
-        if record_exists(database_cursor, str(relative_path)):
+        if has_record(database_cursor, str(relative_path)):
             continue
 
         future = pool.submit(calculate_hash, path, arguments.hash_algorithm, arguments.chunk_size)
@@ -104,8 +114,14 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         relative_path = path.relative_to(root_path)
         hexdigest = binascii.hexlify(digest).decode("ASCII")
         print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexdigest}")
+
         update_record(database_cursor, str(relative_path), digest, path.stat().st_mtime)
+        changes += 1
         del update_futures[future]
+
+        if changes % arguments.save_every == 0:
+            database.commit()
+            changes += 1
 
     database.commit()
     database.close()
