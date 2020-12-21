@@ -61,6 +61,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 
             if database_changes % arguments.save_every == 0:
                 database.commit()
+                database_changes = 0
 
         future_count = len(check_futures)
         for index, future in enumerate(concurrent.futures.as_completed(check_futures), start=1):
@@ -85,7 +86,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 
             if database_changes % arguments.save_every == 0:
                 database.commit()
-                database_changes += 1
+                database_changes = 0
 
             del check_futures[future]
 
@@ -118,7 +119,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 
         if database_changes % arguments.save_every == 0:
             database.commit()
-            database_changes += 1
+            database_changes = 0
 
         del update_futures[future]
 
