@@ -110,18 +110,17 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     for index, future in enumerate(concurrent.futures.as_completed(update_futures), start=1):
         path = update_futures[future]
         digest = future.result()
-
         relative_path = path.relative_to(root_path)
         hexdigest = binascii.hexlify(digest).decode("ASCII")
         print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexdigest}")
-
         update_record(database_cursor, str(relative_path), digest, path.stat().st_mtime)
         database_changes += 1
-        del update_futures[future]
 
         if database_changes % arguments.save_every == 0:
             database.commit()
             database_changes += 1
+
+        del update_futures[future]
 
     database.commit()
     database.close()
