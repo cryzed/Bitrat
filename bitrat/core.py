@@ -39,7 +39,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     database_path = root_path / ".bitrot.db"
     database = get_database(database_path)
     database_cursor = database.cursor()
-    workers = concurrent.futures.ProcessPoolExecutor(max_workers=arguments.workers)
+    executor = concurrent.futures.ProcessPoolExecutor(max_workers=arguments.workers)
     database_changes = 0
     exit_code = ExitCode.Success
 
@@ -56,7 +56,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
                 database_changes += 1
                 continue
 
-            future = workers.submit(calculate_hash, record_path, arguments.hash_algorithm, arguments.chunk_size)
+            future = executor.submit(calculate_hash, record_path, arguments.hash_algorithm, arguments.chunk_size)
             check_futures[future] = record
 
             if database_changes % arguments.save_every == 0:
@@ -103,7 +103,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         if has_record(database_cursor, str(relative_path)):
             continue
 
-        future = workers.submit(calculate_hash, path, arguments.hash_algorithm, arguments.chunk_size)
+        future = executor.submit(calculate_hash, path, arguments.hash_algorithm, arguments.chunk_size)
         update_futures[future] = path
 
     future_count = len(update_futures)
