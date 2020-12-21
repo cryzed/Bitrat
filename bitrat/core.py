@@ -1,5 +1,5 @@
+import sys
 import argparse
-import binascii
 import concurrent.futures
 import enum
 import functools
@@ -21,17 +21,18 @@ from bitrat.database import (
     yield_records,
 )
 from bitrat.types import PathType
+from bitrat.utils import hexlify
 
 
-def calculate_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> bytes:
+def calculate_hash_digest(path: PathType, hash_algorithm: str, chunk_size: int) -> bytes:
     path = pathlib.Path(os.fspath(path))
-    hash_object = hashlib.new(hash_algorithm)
+    hash_ = hashlib.new(hash_algorithm)
 
     with path.open("rb") as file:
         while chunk := file.read(chunk_size):
-            hash_object.update(chunk)
+            hash_.update(chunk)
 
-    return hash_object.digest()
+    return hash_.digest()
 
 
 def run(arguments: argparse.Namespace) -> ExitCode:
@@ -56,7 +57,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
                 database_changes += 1
                 continue
 
-            future = executor.submit(calculate_hash, record_path, arguments.hash_algorithm, arguments.chunk_size)
+            future = executor.submit(calculate_hash_digest, record_path, arguments.hash_algorithm, arguments.chunk_size)
             check_futures[future] = record
 
             if database_changes % arguments.save_every == 0:
@@ -66,21 +67,19 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         future_count = len(check_futures)
         for index, future in enumerate(concurrent.futures.as_completed(check_futures), start=1):
             record = check_futures[future]
-            record_path = root_path / record.path
             digest = future.result()
-            modified = record_path.stat().st_mtime
-            hexdigest = binascii.hexlify(digest).decode("ASCII")
 
+            hexdigest = hexlify(digest)
+            record_path = root_path / record.path
+            modified = record_path.stat().st_mtime
             if record.modified != modified:
-                print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest}")
+                print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest!r}")
                 update_record(database_cursor, record.path, digest, modified)
                 database_changes += 1
             elif record.digest != digest:
-                record_hexdigest = binascii.hexlify(record.digest).decode("ASCII")
-                record_modified_date = datetime.fromtimestamp(record.modified)
                 modified_date = datetime.fromtimestamp(modified)
                 print(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
-                print(f"\t\tRecorded: {record_hexdigest!r} at {record_modified_date}")
+                print(f"\t\tRecorded: {record.hexdigest!r} at {record.modified_date}")
                 print(f"\t\tCurrent:  {hexdigest!r} at {modified_date}")
                 exit_code = ExitCode.Failure
 
@@ -101,16 +100,16 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         if has_record(database_cursor, str(relative_path)):
             continue
 
-        future = executor.submit(calculate_hash, path, arguments.hash_algorithm, arguments.chunk_size)
+        future = executor.submit(calculate_hash_digest, path, arguments.hash_algorithm, arguments.chunk_size)
         update_futures[future] = path
 
     future_count = len(update_futures)
     for index, future in enumerate(concurrent.futures.as_completed(update_futures), start=1):
         path = update_futures[future]
         digest = future.result()
+
         relative_path = path.relative_to(root_path)
-        hexdigest = binascii.hexlify(digest).decode("ASCII")
-        print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexdigest}")
+        print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexlify(digest)}")
         update_record(database_cursor, str(relative_path), digest, path.stat().st_mtime)
         database_changes += 1
 
@@ -128,4 +127,9 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 def main() -> None:
     parser = get_argument_parser()
     arguments = parser.parse_args()
-    parser.exit(run(arguments))
+
+    # TODO: Shutdown thread pool
+    try:
+        parser.exit(run(arguments))
+    except KeyboardInterrupt:
+        print("Aborted.", file=sys.stderr)

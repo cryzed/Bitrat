@@ -3,8 +3,10 @@ import os
 import pathlib
 import sqlite3
 import typing as T
+from datetime import datetime
 
 from bitrat.types import PathType
+from bitrat.utils import hexlify
 
 
 @dataclasses.dataclass
@@ -12,6 +14,14 @@ class Record:
     path: str
     digest: bytes
     modified: float
+
+    @property
+    def hexdigest(self) -> str:
+        return hexlify(self.digest)
+
+    @property
+    def modified_date(self) -> datetime:
+        return datetime.fromtimestamp(self.modified)
 
 
 def get_database(path: PathType) -> sqlite3.Connection:
