@@ -39,9 +39,9 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     database_path = root_path / ".bitrot.db"
     database = get_database(database_path)
     database_cursor = database.cursor()
-    pool = concurrent.futures.ProcessPoolExecutor(max_workers=arguments.workers)
+    workers = concurrent.futures.ProcessPoolExecutor(max_workers=arguments.workers)
+    database_changes = 0
     exit_code = ExitCode.Success
-    changes = 0
 
     if arguments.check:
         # Check against files in database
@@ -53,13 +53,13 @@ def run(arguments: argparse.Namespace) -> ExitCode:
             if not record_path.is_file():
                 print(f"\t- Removing record for {record.path!r}, no such file")
                 delete_record(database_cursor, record.path)
-                changes += 1
+                database_changes += 1
                 continue
 
-            future = pool.submit(calculate_hash, record_path, arguments.hash_algorithm, arguments.chunk_size)
+            future = workers.submit(calculate_hash, record_path, arguments.hash_algorithm, arguments.chunk_size)
             check_futures[future] = record
 
-            if changes % arguments.save_every == 0:
+            if database_changes % arguments.save_every == 0:
                 database.commit()
 
         future_count = len(check_futures)
@@ -73,7 +73,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
             if record.modified != modified:
                 print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest}")
                 update_record(database_cursor, record.path, digest, modified)
-                changes += 1
+                database_changes += 1
             elif record.digest != digest:
                 record_hexdigest = binascii.hexlify(record.digest).decode("ASCII")
                 record_date = datetime.fromtimestamp(record.modified)
@@ -83,9 +83,9 @@ def run(arguments: argparse.Namespace) -> ExitCode:
                 print(f"\t\tCurrent:  {hexdigest!r} at {date}")
                 exit_code = ExitCode.Failure
 
-            if changes % arguments.save_every == 0:
+            if database_changes % arguments.save_every == 0:
                 database.commit()
-                changes += 1
+                database_changes += 1
 
             del check_futures[future]
 
@@ -103,7 +103,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         if has_record(database_cursor, str(relative_path)):
             continue
 
-        future = pool.submit(calculate_hash, path, arguments.hash_algorithm, arguments.chunk_size)
+        future = workers.submit(calculate_hash, path, arguments.hash_algorithm, arguments.chunk_size)
         update_futures[future] = path
 
     future_count = len(update_futures)
@@ -116,12 +116,12 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexdigest}")
 
         update_record(database_cursor, str(relative_path), digest, path.stat().st_mtime)
-        changes += 1
+        database_changes += 1
         del update_futures[future]
 
-        if changes % arguments.save_every == 0:
+        if database_changes % arguments.save_every == 0:
             database.commit()
-            changes += 1
+            database_changes += 1
 
     database.commit()
     database.close()
