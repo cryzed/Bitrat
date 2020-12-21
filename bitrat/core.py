@@ -109,7 +109,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         digest = future.result()
 
         relative_path = path.relative_to(root_path)
-        print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexlify(digest)}")
+        print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexlify(digest)!r}")
         update_record(database_cursor, str(relative_path), digest, path.stat().st_mtime)
         database_changes += 1
 
