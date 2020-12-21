@@ -10,7 +10,7 @@ from bitrat.types import PathType
 @dataclasses.dataclass
 class Record:
     path: str
-    hash_: bytes
+    digest: bytes
     mtime: float
 
 
@@ -27,8 +27,8 @@ def get_database(path: PathType) -> sqlite3.Connection:
     return connection
 
 
-def update_record(cursor: sqlite3.Cursor, path: str, hash_: bytes, mtime: float) -> None:
-    cursor.execute("INSERT OR REPLACE INTO records(path, hash, mtime) VALUES (?, ?, ?)", (path, hash_, mtime))
+def update_record(cursor: sqlite3.Cursor, path: str, digest: bytes, mtime: float) -> None:
+    cursor.execute("INSERT OR REPLACE INTO records(path, hash, mtime) VALUES (?, ?, ?)", (path, digest, mtime))
 
 
 def delete_record(cursor: sqlite3.Cursor, path: str) -> None:

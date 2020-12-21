@@ -25,13 +25,13 @@ from bitrat.types import PathType
 
 def calculate_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> bytes:
     path = pathlib.Path(os.fspath(path))
-    hash_ = hashlib.new(hash_algorithm)
+    hash_object = hashlib.new(hash_algorithm)
 
     with path.open("rb") as file:
         while chunk := file.read(chunk_size):
-            hash_.update(chunk)
+            hash_object.update(chunk)
 
-    return hash_.digest()
+    return hash_object.digest()
 
 
 def run(arguments: argparse.Namespace) -> ExitCode:
@@ -61,15 +61,15 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     for index, future in enumerate(concurrent.futures.as_completed(check_futures), start=1):
         record = check_futures[future]
         record_path = root_path / record.path
-        hash_ = future.result()
+        digest = future.result()
         mtime = record_path.stat().st_mtime
-        hexdigest = binascii.hexlify(hash_).decode("ASCII")
+        hexdigest = binascii.hexlify(digest).decode("ASCII")
 
         if record.mtime != mtime:
             print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest}")
-            update_record(database_cursor, record.path, hash_, mtime)
-        elif record.hash_ != hash_:
-            record_hexdigest = binascii.hexlify(record.hash_).decode("ASCII")
+            update_record(database_cursor, record.path, digest, mtime)
+        elif record.digest != digest:
+            record_hexdigest = binascii.hexlify(record.digest).decode("ASCII")
             record_date = datetime.fromtimestamp(record.mtime)
             date = datetime.fromtimestamp(mtime)
             print(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
@@ -99,11 +99,12 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     future_count = len(update_futures)
     for index, future in enumerate(concurrent.futures.as_completed(update_futures), start=1):
         path = update_futures[future]
+        digest = future.result()
+
         relative_path = path.relative_to(root_path)
-        hash_ = future.result()
-        hexdigest = binascii.hexlify(hash_).decode("ASCII")
+        hexdigest = binascii.hexlify(digest).decode("ASCII")
         print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexdigest}")
-        update_record(database_cursor, str(relative_path), hash_, path.stat().st_mtime)
+        update_record(database_cursor, str(relative_path), digest, path.stat().st_mtime)
         del update_futures[future]
 
     database.commit()
