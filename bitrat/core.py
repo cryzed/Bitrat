@@ -94,10 +94,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     update_futures: T.Dict[concurrent.futures.Future, pathlib.Path] = {}
     print(f"Checking for new files in {str(root_path)!r}...")
     for path in root_path.rglob("*"):
-        if path == database_path:
-            continue
-
-        if not path.is_file():
+        if path == database_path or not path.is_file():
             continue
 
         relative_path = path.relative_to(root_path)
