@@ -43,7 +43,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     database_changes = 0
     exit_code = ExitCode.Success
 
-    def commit():
+    def maybe_commit():
         nonlocal database_changes
         if database_changes % arguments.save_every == 0:
             database.commit()
@@ -64,7 +64,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 
             future = executor.submit(calculate_hash_digest, record_path, arguments.hash_algorithm, arguments.chunk_size)
             check_futures[future] = record
-            commit()
+            maybe_commit()
 
         future_count = len(check_futures)
         for index, future in enumerate(concurrent.futures.as_completed(check_futures), start=1):
@@ -91,7 +91,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
                 print(f"\t\tCurrent:  {hexdigest!r} at {modified_date}")
                 exit_code = ExitCode.Failure
 
-            commit()
+            maybe_commit()
 
     # Check for new files
     update_futures: T.Dict[concurrent.futures.Future, pathlib.Path] = {}
@@ -123,7 +123,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         update_record(database_cursor, str(relative_path), digest, path.stat().st_mtime)
         database_changes += 1
 
-        commit()
+        maybe_commit()
 
     database.commit()
     database.close()
