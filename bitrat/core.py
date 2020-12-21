@@ -43,6 +43,12 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     database_changes = 0
     exit_code = ExitCode.Success
 
+    def commit():
+        nonlocal database_changes
+        if database_changes % arguments.save_every == 0:
+            database.commit()
+            database_changes = 0
+
     if arguments.check:
         # Check against files in database
         check_futures: T.Dict[concurrent.futures.Future, Record] = {}
@@ -58,10 +64,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 
             future = executor.submit(calculate_hash_digest, record_path, arguments.hash_algorithm, arguments.chunk_size)
             check_futures[future] = record
-
-            if database_changes % arguments.save_every == 0:
-                database.commit()
-                database_changes = 0
+            commit()
 
         future_count = len(check_futures)
         for index, future in enumerate(concurrent.futures.as_completed(check_futures), start=1):
@@ -82,10 +85,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
                 print(f"\t\tCurrent:  {hexdigest!r} at {modified_date}")
                 exit_code = ExitCode.Failure
 
-            if database_changes % arguments.save_every == 0:
-                database.commit()
-                database_changes = 0
-
+            commit()
             del check_futures[future]
 
     # Check for new files
@@ -112,10 +112,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         update_record(database_cursor, str(relative_path), digest, path.stat().st_mtime)
         database_changes += 1
 
-        if database_changes % arguments.save_every == 0:
-            database.commit()
-            database_changes = 0
-
+        commit()
         del update_futures[future]
 
     database.commit()
