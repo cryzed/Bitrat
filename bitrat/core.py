@@ -68,8 +68,14 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 
         future_count = len(check_futures)
         for index, future in enumerate(concurrent.futures.as_completed(check_futures), start=1):
-            record = check_futures[future]
-            digest = future.result()
+            record = check_futures.pop(future)
+
+            # pylint: disable=broad-except
+            try:
+                digest = future.result()
+            except Exception as error:
+                print(f"\t- ({index}/{future_count}) Error while calculating hash for {record.path!r}: {error}")
+                continue
 
             hexdigest = hexlify(digest)
             record_path = root_path / record.path
@@ -86,7 +92,6 @@ def run(arguments: argparse.Namespace) -> ExitCode:
                 exit_code = ExitCode.Failure
 
             commit()
-            del check_futures[future]
 
     # Check for new files
     update_futures: T.Dict[concurrent.futures.Future, pathlib.Path] = {}
@@ -104,8 +109,14 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 
     future_count = len(update_futures)
     for index, future in enumerate(concurrent.futures.as_completed(update_futures), start=1):
-        path = update_futures[future]
-        digest = future.result()
+        path = update_futures.pop(future)
+
+        # pylint: disable=broad-except
+        try:
+            digest = future.result()
+        except Exception as error:
+            print(f"\t- ({index}/{future_count}) Error while calculating hash for {record.path!r}: {error}")
+            continue
 
         relative_path = path.relative_to(root_path)
         print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexlify(digest)!r}")
@@ -113,7 +124,6 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         database_changes += 1
 
         commit()
-        del update_futures[future]
 
     database.commit()
     database.close()
