@@ -1,12 +1,11 @@
-import sys
 import argparse
 import concurrent.futures
 import enum
-import functools
 import hashlib
 import os
 import pathlib
 import sqlite3
+import sys
 import typing as T
 from datetime import datetime
 
@@ -21,11 +20,11 @@ from bitrat.database import (
     yield_records,
 )
 from bitrat.types import PathType
-from bitrat.utils import hexlify
+from bitrat.utils import ensure_path, hexlify
 
 
 def calculate_hash_digest(path: PathType, hash_algorithm: str, chunk_size: int) -> bytes:
-    path = pathlib.Path(os.fspath(path))
+    path = ensure_path(path)
     hash_ = hashlib.new(hash_algorithm)
 
     with path.open("rb") as file:

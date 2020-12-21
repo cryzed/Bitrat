@@ -6,7 +6,7 @@ import typing as T
 from datetime import datetime
 
 from bitrat.types import PathType
-from bitrat.utils import hexlify
+from bitrat.utils import ensure_path, hexlify
 
 
 @dataclasses.dataclass
@@ -25,7 +25,7 @@ class Record:
 
 
 def get_database(path: PathType) -> sqlite3.Connection:
-    path = pathlib.Path(os.fspath(path))
+    path = ensure_path(path)
     if path.is_file():
         return sqlite3.connect(path)
 
