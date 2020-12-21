@@ -76,11 +76,11 @@ def run(arguments: argparse.Namespace) -> ExitCode:
                 database_changes += 1
             elif record.digest != digest:
                 record_hexdigest = binascii.hexlify(record.digest).decode("ASCII")
-                record_date = datetime.fromtimestamp(record.modified)
-                date = datetime.fromtimestamp(modified)
+                record_modified_date = datetime.fromtimestamp(record.modified)
+                modified_date = datetime.fromtimestamp(modified)
                 print(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
-                print(f"\t\tRecorded: {record_hexdigest!r} at {record_date}")
-                print(f"\t\tCurrent:  {hexdigest!r} at {date}")
+                print(f"\t\tRecorded: {record_hexdigest!r} at {record_modified_date}")
+                print(f"\t\tCurrent:  {hexdigest!r} at {modified_date}")
                 exit_code = ExitCode.Failure
 
             if database_changes % arguments.save_every == 0:
