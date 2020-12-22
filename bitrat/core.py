@@ -55,7 +55,7 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
     for record in yield_records(database_cursor):
         full_record_path = target_path / record.path
         if not full_record_path.is_file():
-            print(f"\t- Deleting record for {record.path!r}, no such file")
+            print(f"\t- Deleting record for {record.path!r}: no such file")
             delete_record(database_cursor, record.path)
             database_changes += 1
             continue
