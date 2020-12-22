@@ -15,6 +15,7 @@ from bitrat.database import (
     count_records,
     delete_record,
     get_database,
+    get_database_path,
     record_exists,
     update_record,
     yield_records,
@@ -47,16 +48,18 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
             database.commit()
             database_changes = 0
 
-    database_cursor = database.cursor()
-    database_cursor.arraysize = arguments.save_every
+    cursor = database.cursor()
+    cursor.arraysize = arguments.save_every
     target_path = ensure_pathlib_path(arguments.path)
+    database_path = get_database_path(target_path)
     check_futures: T.Dict[concurrent.futures.Future, Record] = {}
 
-    for record in yield_records(database_cursor):
+    print(f"Checking against {count_records(cursor)} records from {str(database_path)!r}...")
+    for record in yield_records(cursor):
         full_record_path = target_path / record.path
         if not full_record_path.is_file():
             print(f"\t- Deleting record for {record.path!r}: no such file")
-            delete_record(database_cursor, record.path)
+            delete_record(cursor, record.path)
             database_changes += 1
             continue
 
@@ -80,7 +83,7 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
         modified = full_record_path.stat().st_mtime
         if record.modified != modified:
             print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest!r}")
-            update_record(database_cursor, record.path, hash_, modified)
+            update_record(cursor, record.path, hash_, modified)
             database_changes += 1
         elif record.hash != hash_:
             modified_date = datetime.fromtimestamp(modified)
@@ -91,7 +94,7 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
 
         maybe_commit()
 
-    database_cursor.close()
+    cursor.close()
     return exit_code
 
 
@@ -108,16 +111,17 @@ def update_files(
             database_changes = 0
 
     target_path = ensure_pathlib_path(arguments.path)
-    database_cursor = database.cursor()
-    database_path = target_path / ".bitrot.db"
+    cursor = database.cursor()
+    database_path = get_database_path(target_path)
     update_futures: T.Dict[concurrent.futures.Future, pathlib.Path] = {}
 
+    print(f"Checking for new files in {str(target_path)!r}...")
     for path in target_path.rglob("*"):
         if path == database_path or not path.is_file():
             continue
 
         relative_path = path.relative_to(target_path)
-        if record_exists(database_cursor, str(relative_path)):
+        if record_exists(cursor, str(relative_path)):
             continue
 
         future = executor.submit(get_hash, path, arguments.hash_algorithm, arguments.chunk_size)
@@ -136,30 +140,25 @@ def update_files(
             continue
 
         print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}")
-        update_record(database_cursor, str(relative_path), hash_, path.stat().st_mtime)
+        update_record(cursor, str(relative_path), hash_, path.stat().st_mtime)
         database_changes += 1
 
         maybe_commit()
 
-    database_cursor.close()
+    cursor.close()
     return exit_code
 
 
 def run(arguments: argparse.Namespace) -> ExitCode:
     target_path = ensure_pathlib_path(arguments.path)
-    database_path = target_path / ".bitrot.db"
-    database = get_database(database_path)
-    database_cursor = database.cursor()
+    database = get_database(get_database_path(target_path))
     executor = ProcessPoolExecutor(max_workers=arguments.workers)
 
     if arguments.check:
-        record_count = count_records(database_cursor)
-        print(f"Checking against {record_count} records from {str(database_path)!r}...")
         exit_code = check_files(database, executor, arguments)
         if exit_code is not ExitCode.Success:
             return exit_code
 
-    print(f"Checking for new files in {str(target_path)!r}...")
     exit_code = update_files(database, executor, arguments)
     database.commit()
     database.close()

@@ -1,4 +1,5 @@
 import dataclasses
+import pathlib
 import sqlite3
 import typing as T
 from datetime import datetime
@@ -20,6 +21,10 @@ class Record:
     @property
     def modified_date(self) -> datetime:
         return datetime.fromtimestamp(self.modified)
+
+
+def get_database_path(target_path: PathType) -> pathlib.Path:
+    return ensure_pathlib_path(target_path) / ".bitrot.db"
 
 
 def get_database(path: PathType) -> sqlite3.Connection:
