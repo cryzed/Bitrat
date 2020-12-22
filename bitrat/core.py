@@ -52,7 +52,7 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
     cursor.arraysize = arguments.save_every
     target_path = ensure_pathlib_path(arguments.path)
     database_path = get_database_path(target_path)
-    check_futures: T.Dict[concurrent.futures.Future, Record] = {}
+    futures: T.Dict[concurrent.futures.Future, Record] = {}
 
     print(f"Checking against {count_records(cursor)} records from {str(database_path)!r}...")
     for record in yield_records(cursor):
@@ -64,12 +64,12 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
             continue
 
         future = executor.submit(get_hash, full_record_path, arguments.hash_algorithm, arguments.chunk_size)
-        check_futures[future] = record
+        futures[future] = record
         maybe_commit()
 
-    future_count = len(check_futures)
-    for index, future in enumerate(concurrent.futures.as_completed(check_futures), start=1):
-        record = check_futures.pop(future)
+    future_count = len(futures)
+    for index, future in enumerate(concurrent.futures.as_completed(futures), start=1):
+        record = futures.pop(future)
 
         # pylint: disable=broad-except
         try:
@@ -114,34 +114,34 @@ def update_files(
     target_path = ensure_pathlib_path(arguments.path)
     cursor = database.cursor()
     database_path = get_database_path(target_path)
-    update_futures: T.Dict[concurrent.futures.Future, pathlib.Path] = {}
+    futures: T.Dict[concurrent.futures.Future, pathlib.Path] = {}
 
     print(f"Checking for new files in {str(target_path)!r}...")
     for path in target_path.rglob("*"):
         if path == database_path or not path.is_file():
             continue
 
-        relative_path = path.relative_to(target_path)
-        if record_exists(cursor, str(relative_path)):
+        relative_path = str(path.relative_to(target_path))
+        if record_exists(cursor, relative_path):
             continue
 
         future = executor.submit(get_hash, path, arguments.hash_algorithm, arguments.chunk_size)
-        update_futures[future] = path
+        futures[future] = path
 
-    future_count = len(update_futures)
-    for index, future in enumerate(concurrent.futures.as_completed(update_futures), start=1):
-        path = update_futures.pop(future)
-        relative_path = path.relative_to(target_path)
+    future_count = len(futures)
+    for index, future in enumerate(concurrent.futures.as_completed(futures), start=1):
+        path = futures.pop(future)
+        relative_path = str(path.relative_to(target_path))
 
         # pylint: disable=broad-except
         try:
             hash_ = future.result()
         except Exception as error:
-            stderr(f"\t- ({index}/{future_count}) Error while hashing {str(relative_path)!r}: {error}")
+            stderr(f"\t- ({index}/{future_count}) Error while hashing {relative_path!r}: {error}")
             continue
 
-        print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}")
-        update_record(cursor, str(relative_path), hash_, path.stat().st_mtime)
+        print(f"\t- ({index}/{future_count}) Adding record for {relative_path!r}")
+        update_record(cursor, relative_path, hash_, path.stat().st_mtime)
         database_changes += 1
 
         maybe_commit()
