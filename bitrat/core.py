@@ -105,7 +105,6 @@ def update_files(
 
     target_path = ensure_pathlib_path(arguments.path)
     database_cursor = database.cursor()
-    database_cursor.arraysize = arguments.save_every
     database_path = target_path / ".bitrot.db"
     update_futures: T.Dict[concurrent.futures.Future, pathlib.Path] = {}
 
@@ -147,7 +146,6 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     database_path = target_path / ".bitrot.db"
     database = get_database(database_path)
     database_cursor = database.cursor()
-    database_cursor.arraysize = arguments.save_every
     executor = ProcessPoolExecutor(max_workers=arguments.workers)
 
     if arguments.check:
