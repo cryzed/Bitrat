@@ -6,10 +6,7 @@ from bitrat.types import PathType
 
 
 def ensure_pathlib_path(path: PathType) -> pathlib.Path:
-    if isinstance(path, pathlib.Path):
-        return path
-
-    return pathlib.Path(os.fspath(path))
+    return path if isinstance(path, pathlib.Path) else pathlib.Path(os.fspath(path))
 
 
 def hexlify(data: bytes) -> str:
