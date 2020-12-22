@@ -45,7 +45,7 @@ def delete_record(cursor: sqlite3.Cursor, path: str) -> None:
 
 def has_record(cursor: sqlite3.Cursor, path: str) -> bool:
     cursor.execute("SELECT EXISTS(SELECT 1 FROM records WHERE path=? LIMIT 1)", (path,))
-    return cursor.fetchone()[0] == 1
+    return bool(cursor.fetchone()[0])
 
 
 def yield_records(cursor: sqlite3.Cursor) -> T.Generator[Record, None, None]:
