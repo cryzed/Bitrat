@@ -107,15 +107,15 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     future_count = len(update_futures)
     for index, future in enumerate(concurrent.futures.as_completed(update_futures), start=1):
         path = update_futures.pop(future)
+        relative_path = path.relative_to(root_path)
 
         # pylint: disable=broad-except
         try:
             digest = future.result()
         except Exception as error:
-            print(f"\t- ({index}/{future_count}) Error while calculating hash for {record.path!r}: {error}")
+            print(f"\t- ({index}/{future_count}) Error while calculating hash for {str(relative_path)!r}: {error}")
             continue
 
-        relative_path = path.relative_to(root_path)
         print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexlify(digest)!r}")
         update_record(database_cursor, str(relative_path), digest, path.stat().st_mtime)
         database_changes += 1

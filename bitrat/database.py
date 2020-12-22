@@ -28,11 +28,11 @@ def get_database(path: PathType) -> sqlite3.Connection:
         return sqlite3.connect(path)
 
     # Initialize database
-    connection = sqlite3.connect(path)
-    cursor = connection.cursor()
+    database = sqlite3.connect(path)
+    cursor = database.cursor()
     cursor.execute("CREATE TABLE records (path TEXT PRIMARY KEY, hash BLOB, modified REAL)")
-    connection.commit()
-    return connection
+    database.commit()
+    return database
 
 
 def update_record(cursor: sqlite3.Cursor, path: str, digest: bytes, modified: float) -> None:
