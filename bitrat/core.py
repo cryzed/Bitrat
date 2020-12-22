@@ -9,9 +9,9 @@ from datetime import datetime
 from bitrat.console import ExitCode, get_argument_parser
 from bitrat.database import (
     Record,
+    count_records,
     delete_record,
     get_database,
-    count_records,
     record_exists,
     update_record,
     yield_records,
