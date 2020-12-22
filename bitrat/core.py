@@ -12,7 +12,7 @@ from bitrat.database import (
     delete_record,
     get_database,
     get_total_records,
-    has_record,
+    record_exists,
     update_record,
     yield_records,
 )
@@ -98,7 +98,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
             continue
 
         relative_path = path.relative_to(root_path)
-        if has_record(database_cursor, str(relative_path)):
+        if record_exists(database_cursor, str(relative_path)):
             continue
 
         future = executor.submit(get_hash, path, arguments.hash_algorithm, arguments.chunk_size)

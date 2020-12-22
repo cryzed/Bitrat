@@ -43,7 +43,7 @@ def delete_record(cursor: sqlite3.Cursor, path: str) -> None:
     cursor.execute("DELETE FROM records WHERE path=?", (path,))
 
 
-def has_record(cursor: sqlite3.Cursor, path: str) -> bool:
+def record_exists(cursor: sqlite3.Cursor, path: str) -> bool:
     cursor.execute("SELECT EXISTS(SELECT 1 FROM records WHERE path=? LIMIT 1)", (path,))
     return bool(cursor.fetchone()[0])
 
