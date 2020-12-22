@@ -159,6 +159,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     exit_code = update_files(database, executor, arguments)
     database.commit()
     database.close()
+    executor.shutdown()
     return exit_code
 
 
