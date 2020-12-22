@@ -94,6 +94,7 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
 
         maybe_commit()
 
+    database.commit()
     cursor.close()
     return exit_code
 
@@ -145,6 +146,7 @@ def update_files(
 
         maybe_commit()
 
+    database.commit()
     cursor.close()
     return exit_code
 
@@ -160,7 +162,6 @@ def run(arguments: argparse.Namespace) -> ExitCode:
             return exit_code
 
     exit_code = update_files(database, executor, arguments)
-    database.commit()
     database.close()
     executor.shutdown()
     return exit_code
