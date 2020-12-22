@@ -1,11 +1,11 @@
 import binascii
-import pathlib
 import os
+import pathlib
 
 from bitrat.types import PathType
 
 
-def ensure_path(path: PathType) -> pathlib.Path:
+def ensure_pathlib_path(path: PathType) -> pathlib.Path:
     if isinstance(path, pathlib.Path):
         return path
 

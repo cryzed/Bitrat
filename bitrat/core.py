@@ -1,10 +1,7 @@
 import argparse
 import concurrent.futures
-import enum
 import hashlib
-import os
 import pathlib
-import sqlite3
 import sys
 import typing as T
 from datetime import datetime
@@ -20,11 +17,11 @@ from bitrat.database import (
     yield_records,
 )
 from bitrat.types import PathType
-from bitrat.utils import ensure_path, hexlify
+from bitrat.utils import ensure_pathlib_path, hexlify
 
 
-def calculate_hash_digest(path: PathType, hash_algorithm: str, chunk_size: int) -> bytes:
-    path = ensure_path(path)
+def get_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> bytes:
+    path = ensure_pathlib_path(path)
     hash_ = hashlib.new(hash_algorithm)
 
     with path.open("rb") as file:
@@ -43,7 +40,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     database_changes = 0
     exit_code = ExitCode.Success
 
-    def maybe_commit():
+    def maybe_commit() -> None:
         nonlocal database_changes
         if database_changes % arguments.save_every == 0:
             database.commit()
@@ -55,14 +52,14 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         total_records = get_total_records(database_cursor)
         print(f"Checking against {total_records} records from {str(database_path)!r}...")
         for record in yield_records(database_cursor):
-            record_path = root_path / record.path
-            if not record_path.is_file():
+            full_record_path = root_path / record.path
+            if not full_record_path.is_file():
                 print(f"\t- Removing record for {record.path!r}, no such file")
                 delete_record(database_cursor, record.path)
                 database_changes += 1
                 continue
 
-            future = executor.submit(calculate_hash_digest, record_path, arguments.hash_algorithm, arguments.chunk_size)
+            future = executor.submit(get_hash, full_record_path, arguments.hash_algorithm, arguments.chunk_size)
             check_futures[future] = record
             maybe_commit()
 
@@ -78,8 +75,8 @@ def run(arguments: argparse.Namespace) -> ExitCode:
                 continue
 
             hexdigest = hexlify(digest)
-            record_path = root_path / record.path
-            modified = record_path.stat().st_mtime
+            full_record_path = root_path / record.path
+            modified = full_record_path.stat().st_mtime
             if record.modified != modified:
                 print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest!r}")
                 update_record(database_cursor, record.path, digest, modified)
@@ -104,7 +101,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         if has_record(database_cursor, str(relative_path)):
             continue
 
-        future = executor.submit(calculate_hash_digest, path, arguments.hash_algorithm, arguments.chunk_size)
+        future = executor.submit(get_hash, path, arguments.hash_algorithm, arguments.chunk_size)
         update_futures[future] = path
 
     future_count = len(update_futures)
