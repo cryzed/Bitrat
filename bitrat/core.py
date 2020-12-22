@@ -1,5 +1,6 @@
 import argparse
 import concurrent.futures
+import functools
 import hashlib
 import pathlib
 import sqlite3
@@ -33,6 +34,9 @@ def get_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> bytes:
     return hash_.digest()
 
 
+stderr = functools.partial(print, file=sys.stderr)
+
+
 def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arguments: argparse.Namespace) -> ExitCode:
     exit_code = ExitCode.Success
     database_changes = 0
@@ -51,7 +55,7 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
     for record in yield_records(database_cursor):
         full_record_path = target_path / record.path
         if not full_record_path.is_file():
-            print(f"\t- Removing record for {record.path!r}, no such file")
+            print(f"\t- Deleting record for {record.path!r}, no such file")
             delete_record(database_cursor, record.path)
             database_changes += 1
             continue
@@ -68,7 +72,7 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
         try:
             hash_ = future.result()
         except Exception as error:
-            print(f"\t- ({index}/{future_count}) Error while calculating hash for {record.path!r}: {error}")
+            print(f"\t- ({index}/{future_count}) Error while hashing {record.path!r}: {error}")
             continue
 
         hexdigest = hexlify(hash_)
@@ -80,9 +84,9 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
             database_changes += 1
         elif record.hash != hash_:
             modified_date = datetime.fromtimestamp(modified)
-            print(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
-            print(f"\t\tRecorded: {record.hash_hexdigest!r} at {record.modified_date}")
-            print(f"\t\tCurrent:  {hexdigest!r} at {modified_date}")
+            stderr(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
+            stderr(f"\t\tRecorded hash: {record.hash_hexdigest!r} at {record.modified_date}")
+            stderr(f"\t\tCurrent hash:  {hexdigest!r} at {modified_date}")
             exit_code = ExitCode.Failure
 
         maybe_commit()
@@ -128,10 +132,10 @@ def update_files(
         try:
             hash_ = future.result()
         except Exception as error:
-            print(f"\t- ({index}/{future_count}) Error while calculating hash for {str(relative_path)!r}: {error}")
+            print(f"\t- ({index}/{future_count}) Error while hashing {str(relative_path)!r}: {error}")
             continue
 
-        print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexlify(hash_)!r}")
+        print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}")
         update_record(database_cursor, str(relative_path), hash_, path.stat().st_mtime)
         database_changes += 1
 
