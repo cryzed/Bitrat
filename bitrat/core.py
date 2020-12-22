@@ -69,22 +69,22 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 
             # pylint: disable=broad-except
             try:
-                digest = future.result()
+                hash_ = future.result()
             except Exception as error:
                 print(f"\t- ({index}/{future_count}) Error while calculating hash for {record.path!r}: {error}")
                 continue
 
-            hexdigest = hexlify(digest)
+            hexdigest = hexlify(hash_)
             full_record_path = root_path / record.path
             modified = full_record_path.stat().st_mtime
             if record.modified != modified:
                 print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest!r}")
-                update_record(database_cursor, record.path, digest, modified)
+                update_record(database_cursor, record.path, hash_, modified)
                 database_changes += 1
-            elif record.digest != digest:
+            elif record.hash != hash_:
                 modified_date = datetime.fromtimestamp(modified)
                 print(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
-                print(f"\t\tRecorded: {record.hexdigest!r} at {record.modified_date}")
+                print(f"\t\tRecorded: {record.hash_hexdigest!r} at {record.modified_date}")
                 print(f"\t\tCurrent:  {hexdigest!r} at {modified_date}")
                 exit_code = ExitCode.Failure
 
@@ -111,13 +111,13 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 
         # pylint: disable=broad-except
         try:
-            digest = future.result()
+            hash_ = future.result()
         except Exception as error:
             print(f"\t- ({index}/{future_count}) Error while calculating hash for {str(relative_path)!r}: {error}")
             continue
 
-        print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexlify(digest)!r}")
-        update_record(database_cursor, str(relative_path), digest, path.stat().st_mtime)
+        print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}: {hexlify(hash_)!r}")
+        update_record(database_cursor, str(relative_path), hash_, path.stat().st_mtime)
         database_changes += 1
 
         maybe_commit()

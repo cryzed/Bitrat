@@ -10,12 +10,12 @@ from bitrat.utils import ensure_pathlib_path, hexlify
 @dataclasses.dataclass
 class Record:
     path: str
-    digest: bytes
+    hash: bytes
     modified: float
 
     @property
-    def hexdigest(self) -> str:
-        return hexlify(self.digest)
+    def hash_hexdigest(self) -> str:
+        return hexlify(self.hash)
 
     @property
     def modified_date(self) -> datetime:
@@ -35,8 +35,8 @@ def get_database(path: PathType) -> sqlite3.Connection:
     return database
 
 
-def update_record(cursor: sqlite3.Cursor, path: str, digest: bytes, modified: float) -> None:
-    cursor.execute("INSERT OR REPLACE INTO records(path, hash, modified) VALUES (?, ?, ?)", (path, digest, modified))
+def update_record(cursor: sqlite3.Cursor, path: str, hash_: bytes, modified: float) -> None:
+    cursor.execute("INSERT OR REPLACE INTO records(path, hash, modified) VALUES (?, ?, ?)", (path, hash_, modified))
 
 
 def delete_record(cursor: sqlite3.Cursor, path: str) -> None:
