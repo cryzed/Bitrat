@@ -32,8 +32,8 @@ def get_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> bytes:
 
 
 def run(arguments: argparse.Namespace) -> ExitCode:
-    root_path = pathlib.Path(arguments.path)
-    database_path = root_path / ".bitrot.db"
+    target_path = pathlib.Path(arguments.path)
+    database_path = target_path / ".bitrot.db"
     database = get_database(database_path)
     database_cursor = database.cursor()
     executor = concurrent.futures.ProcessPoolExecutor(max_workers=arguments.workers)
@@ -52,7 +52,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
         record_count = count_records(database_cursor)
         print(f"Checking against {record_count} records from {str(database_path)!r}...")
         for record in yield_records(database_cursor):
-            full_record_path = root_path / record.path
+            full_record_path = target_path / record.path
             if not full_record_path.is_file():
                 print(f"\t- Removing record for {record.path!r}, no such file")
                 delete_record(database_cursor, record.path)
@@ -75,7 +75,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
                 continue
 
             hexdigest = hexlify(hash_)
-            full_record_path = root_path / record.path
+            full_record_path = target_path / record.path
             modified = full_record_path.stat().st_mtime
             if record.modified != modified:
                 print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest!r}")
@@ -92,12 +92,12 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 
     # Check for new files
     update_futures: T.Dict[concurrent.futures.Future, pathlib.Path] = {}
-    print(f"Checking for new files in {str(root_path)!r}...")
-    for path in root_path.rglob("*"):
+    print(f"Checking for new files in {str(target_path)!r}...")
+    for path in target_path.rglob("*"):
         if path == database_path or not path.is_file():
             continue
 
-        relative_path = path.relative_to(root_path)
+        relative_path = path.relative_to(target_path)
         if record_exists(database_cursor, str(relative_path)):
             continue
 
@@ -107,7 +107,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     future_count = len(update_futures)
     for index, future in enumerate(concurrent.futures.as_completed(update_futures), start=1):
         path = update_futures.pop(future)
-        relative_path = path.relative_to(root_path)
+        relative_path = path.relative_to(target_path)
 
         # pylint: disable=broad-except
         try:
