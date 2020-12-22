@@ -75,7 +75,7 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
         try:
             hash_ = future.result()
         except Exception as error:
-            print(f"\t- ({index}/{future_count}) Error while hashing {record.path!r}: {error}")
+            stderr(f"\t- ({index}/{future_count}) Error while hashing {record.path!r}: {error}")
             continue
 
         hexdigest = hexlify(hash_)
@@ -136,7 +136,7 @@ def update_files(
         try:
             hash_ = future.result()
         except Exception as error:
-            print(f"\t- ({index}/{future_count}) Error while hashing {str(relative_path)!r}: {error}")
+            stderr(f"\t- ({index}/{future_count}) Error while hashing {str(relative_path)!r}: {error}")
             continue
 
         print(f"\t- ({index}/{future_count}) Adding record for {str(relative_path)!r}")
