@@ -11,7 +11,7 @@ from bitrat.database import (
     Record,
     delete_record,
     get_database,
-    get_total_records,
+    count_records,
     record_exists,
     update_record,
     yield_records,
@@ -49,8 +49,8 @@ def run(arguments: argparse.Namespace) -> ExitCode:
     if arguments.check:
         # Check against files in database
         check_futures: T.Dict[concurrent.futures.Future, Record] = {}
-        total_records = get_total_records(database_cursor)
-        print(f"Checking against {total_records} records from {str(database_path)!r}...")
+        record_count = count_records(database_cursor)
+        print(f"Checking against {record_count} records from {str(database_path)!r}...")
         for record in yield_records(database_cursor):
             full_record_path = root_path / record.path
             if not full_record_path.is_file():

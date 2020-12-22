@@ -55,6 +55,6 @@ def yield_records(cursor: sqlite3.Cursor) -> T.Generator[Record, None, None]:
             yield Record(*record)
 
 
-def get_total_records(cursor: sqlite3.Cursor) -> int:
+def count_records(cursor: sqlite3.Cursor) -> int:
     cursor.execute("SELECT COUNT() FROM records")
     return cursor.fetchone()[0]
