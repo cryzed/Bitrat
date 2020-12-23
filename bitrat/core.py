@@ -6,7 +6,6 @@ import pathlib
 import sqlite3
 import sys
 import typing as T
-from concurrent.futures.process import ProcessPoolExecutor
 from datetime import datetime
 
 from bitrat.console import ExitCode, get_argument_parser
@@ -38,7 +37,9 @@ def get_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> bytes:
 stderr = functools.partial(print, file=sys.stderr)
 
 
-def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arguments: argparse.Namespace) -> ExitCode:
+def check_files(
+    database: sqlite3.Connection, executor: concurrent.futures.ProcessPoolExecutor, arguments: argparse.Namespace
+) -> ExitCode:
     exit_code = ExitCode.Success
     database_changes = 0
 
@@ -100,7 +101,7 @@ def check_files(database: sqlite3.Connection, executor: ProcessPoolExecutor, arg
 
 
 def update_files(
-    database: sqlite3.Connection, executor: ProcessPoolExecutor, arguments: argparse.Namespace
+    database: sqlite3.Connection, executor: concurrent.futures.ProcessPoolExecutor, arguments: argparse.Namespace
 ) -> ExitCode:
     exit_code = ExitCode.Success
     database_changes = 0
@@ -154,7 +155,7 @@ def update_files(
 def run(arguments: argparse.Namespace) -> ExitCode:
     target_path = ensure_pathlib_path(arguments.path)
     database = get_database(get_database_path(target_path))
-    executor = ProcessPoolExecutor(max_workers=arguments.workers)
+    executor = concurrent.futures.ProcessPoolExecutor(max_workers=arguments.workers)
 
     if arguments.check:
         exit_code = check_files(database, executor, arguments)
