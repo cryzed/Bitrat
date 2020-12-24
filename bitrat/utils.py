@@ -5,7 +5,7 @@ import pathlib
 from bitrat.types import PathType
 
 
-def ensure_pathlib_path(path: PathType) -> pathlib.Path:
+def get_path(path: PathType) -> pathlib.Path:
     return path if isinstance(path, pathlib.Path) else pathlib.Path(os.fspath(path))
 
 

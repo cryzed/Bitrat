@@ -20,11 +20,11 @@ from bitrat.database import (
     yield_records,
 )
 from bitrat.types import PathType
-from bitrat.utils import ensure_pathlib_path, hexlify
+from bitrat.utils import get_path, hexlify
 
 
 def get_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> bytes:
-    path = ensure_pathlib_path(path)
+    path = get_path(path)
     hash_ = hashlib.new(hash_algorithm)
 
     with path.open("rb") as file:
@@ -51,7 +51,7 @@ def check_files(
 
     cursor = database.cursor()
     cursor.arraysize = arguments.save_every
-    target_path = ensure_pathlib_path(arguments.path)
+    target_path = get_path(arguments.path)
     database_path = get_database_path(target_path)
     futures: T.Dict[concurrent.futures.Future, Record] = {}
 
@@ -112,7 +112,7 @@ def update_files(
             database.commit()
             database_changes = 0
 
-    target_path = ensure_pathlib_path(arguments.path)
+    target_path = get_path(arguments.path)
     cursor = database.cursor()
     database_path = get_database_path(target_path)
     futures: T.Dict[concurrent.futures.Future, pathlib.Path] = {}
@@ -153,7 +153,7 @@ def update_files(
 
 
 def run(arguments: argparse.Namespace) -> ExitCode:
-    target_path = ensure_pathlib_path(arguments.path)
+    target_path = get_path(arguments.path)
     database = get_database(get_database_path(target_path))
     executor = concurrent.futures.ProcessPoolExecutor(max_workers=arguments.workers)
 

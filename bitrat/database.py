@@ -5,7 +5,7 @@ import typing as T
 from datetime import datetime
 
 from bitrat.types import PathType
-from bitrat.utils import ensure_pathlib_path, hexlify
+from bitrat.utils import get_path, hexlify
 
 
 @dataclasses.dataclass
@@ -24,11 +24,11 @@ class Record:
 
 
 def get_database_path(target_path: PathType) -> pathlib.Path:
-    return ensure_pathlib_path(target_path) / ".bitrot.db"
+    return get_path(target_path) / ".bitrot.db"
 
 
 def get_database(path: PathType) -> sqlite3.Connection:
-    path = ensure_pathlib_path(path)
+    path = get_path(path)
     if path.is_file():
         return sqlite3.connect(path)
 
