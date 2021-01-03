@@ -123,7 +123,12 @@ def update_files(
             continue
 
         relative_path = str(path.relative_to(target_path))
-        if record_exists(cursor, relative_path):
+
+        try:
+            if record_exists(cursor, relative_path):
+                continue
+        except UnicodeEncodeError as error:
+            stderr(f"\t- Problematic filename {relative_path!r}: {error}, skipping")
             continue
 
         future = executor.submit(get_hash, path, arguments.hash_algorithm, arguments.chunk_size)
