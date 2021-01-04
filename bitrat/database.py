@@ -63,3 +63,7 @@ def yield_records(cursor: sqlite3.Cursor) -> T.Generator[Record, None, None]:
 def count_records(cursor: sqlite3.Cursor) -> int:
     cursor.execute("SELECT COUNT() FROM records")
     return cursor.fetchone()[0]
+
+
+def vacuum_database(cursor: sqlite3.Cursor) -> None:
+    cursor.execute("VACUUM")

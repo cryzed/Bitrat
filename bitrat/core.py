@@ -17,6 +17,7 @@ from bitrat.database import (
     get_database_path,
     record_exists,
     update_record,
+    vacuum_database,
     yield_records,
 )
 from bitrat.types import PathType
@@ -168,8 +169,13 @@ def run(arguments: argparse.Namespace) -> ExitCode:
             return exit_code
 
     exit_code = update_files(database, executor, arguments)
+
+    print("Vacuuming database...")
+    vacuum_database(database.cursor())
+    database.commit()
     database.close()
     executor.shutdown()
+
     return exit_code
 
 
