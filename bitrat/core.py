@@ -1,5 +1,6 @@
 import argparse
 import concurrent.futures
+import dataclasses
 import functools
 import hashlib
 import pathlib
@@ -24,15 +25,27 @@ from bitrat.types import PathType
 from bitrat.utils import get_path, hexlify
 
 
-def get_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> bytes:
+@dataclasses.dataclass
+class HashResult:
+    hash: bytes
+    modified: float
+
+
+def get_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> HashResult:
     path = get_path(path)
     hash_ = hashlib.new(hash_algorithm)
 
+    # Get the modified time immediately before hashing, so there's a reduced possibily of the timestamp and hash getting
+    # out-of-sync. A problematic scenario: the hash for a file was calculated, but the file's contents have changed
+    # again in the period between the hash being calculated and the main thread getting the last modified time. During
+    # the next check, the hash for the file's new content won't match, but have the same timestamp, leading to a false
+    # positive bitrot detection.
+    modified = path.stat().st_mtime
     with path.open("rb") as file:
         while chunk := file.read(chunk_size):
             hash_.update(chunk)
 
-    return hash_.digest()
+    return HashResult(hash_.digest(), modified)
 
 
 stderr = functools.partial(print, file=sys.stderr)
@@ -75,20 +88,21 @@ def check_files(
 
         # pylint: disable=broad-except
         try:
-            hash_ = future.result()
+            result = future.result()
+        except FileNotFoundError:
+            # File disappeared before the hash was calculated, the record will be removed during the next run
+            continue
         except Exception as error:
             stderr(f"\t- ({index}/{future_count}) Error while hashing {record.path!r}: {error}")
             continue
 
-        hexdigest = hexlify(hash_)
-        full_record_path = target_path / record.path
-        modified = full_record_path.stat().st_mtime
-        if record.modified != modified:
+        hexdigest = hexlify(result.hash)
+        if record.modified != result.modified:
             print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest!r}")
-            update_record(cursor, record.path, hash_, modified)
+            update_record(cursor, record.path, result.hash, result.modified)
             database_changes += 1
-        elif record.hash != hash_:
-            modified_date = datetime.fromtimestamp(modified)
+        elif record.hash != result.hash:
+            modified_date = datetime.fromtimestamp(result.modified)
             stderr(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
             stderr(f"\t\tRecorded hash: {record.hash_hexdigest!r} at {record.modified_date}")
             stderr(f"\t\tCurrent hash:  {hexdigest!r} at {modified_date}")
@@ -142,13 +156,16 @@ def update_files(
 
         # pylint: disable=broad-except
         try:
-            hash_ = future.result()
+            result = future.result()
+        except FileNotFoundError:
+            # File disappeared before the hash was calculated
+            continue
         except Exception as error:
             stderr(f"\t- ({index}/{future_count}) Error while hashing {relative_path!r}: {error}")
             continue
 
         print(f"\t- ({index}/{future_count}) Adding record for {relative_path!r}")
-        update_record(cursor, relative_path, hash_, path.stat().st_mtime)
+        update_record(cursor, relative_path, result.hash, result.modified)
         database_changes += 1
 
         maybe_commit()
