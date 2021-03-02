@@ -35,11 +35,11 @@ def get_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> HashResult
     path = get_path(path)
     hash_ = hashlib.new(hash_algorithm)
 
-    # Get the modified time immediately before hashing, so there's a reduced possibily of the timestamp and hash getting
-    # out-of-sync. A problematic scenario: the hash for a file was calculated, but the file's contents have changed
-    # again in the period between the hash being calculated and the main thread getting the last modified time. During
-    # the next check, the hash for the file's new content won't match, but have the same timestamp, leading to a false
-    # positive bitrot detection.
+    # Get the modified time immediately before hashing, so there's a reduced possibility of the timestamp and hash
+    # getting out-of-sync. A problematic scenario: the hash for a file was calculated, but the file's contents have
+    # changed again in the period between the hash being calculated and the main thread getting the last modified time.
+    # During the next check, the hash for the file's new content won't match, but have the same timestamp, leading to a
+    # false positive bitrot detection.
     modified = path.stat().st_mtime
     with path.open("rb") as file:
         while chunk := file.read(chunk_size):
