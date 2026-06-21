@@ -5,7 +5,7 @@ description = "An alternative to Bitrot for detecting file bitrot"
 requires-python = ">=3.12"
 
 [project.scripts]
-bitrat = "bitrat.__main__:main"
+bitrat = "bitrat.core:main"
 
 [dependency-groups]
 dev = [
