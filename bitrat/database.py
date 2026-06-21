@@ -1,14 +1,14 @@
 import dataclasses
+import datetime
 import pathlib
 import sqlite3
-import typing as T
-from datetime import datetime
+from collections import abc
 
-from bitrat.types import PathType
-from bitrat.utils import get_path, hexlify
+from .types import PathType
+from .utils import get_path, get_system_timezone, hexlify
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True, slots=True)
 class Record:
     path: str
     hash: bytes
@@ -19,8 +19,8 @@ class Record:
         return hexlify(self.hash)
 
     @property
-    def modified_date(self) -> datetime:
-        return datetime.fromtimestamp(self.modified)
+    def modified_date(self) -> datetime.datetime:
+        return datetime.datetime.fromtimestamp(self.modified, tz=get_system_timezone())
 
 
 def get_database_path(target_path: PathType) -> pathlib.Path:
@@ -32,7 +32,7 @@ def get_database(path: PathType) -> sqlite3.Connection:
     if path.is_file():
         return sqlite3.connect(path)
 
-    # Initialize database
+    # Initialize database.
     database = sqlite3.connect(path)
     cursor = database.cursor()
     cursor.execute("CREATE TABLE records (path TEXT PRIMARY KEY, hash BLOB, modified REAL)")
@@ -53,7 +53,7 @@ def record_exists(cursor: sqlite3.Cursor, path: str) -> bool:
     return bool(cursor.fetchone()[0])
 
 
-def yield_records(cursor: sqlite3.Cursor) -> T.Generator[Record, None, None]:
+def yield_records(cursor: sqlite3.Cursor) -> abc.Generator[Record]:
     cursor.execute("SELECT path, hash, modified FROM records")
     while chunk := cursor.fetchmany():
         for record in chunk:

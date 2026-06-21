@@ -1,16 +1,15 @@
 import argparse
 import concurrent.futures
 import dataclasses
+import datetime
 import functools
 import hashlib
 import pathlib
 import sqlite3
 import sys
-import typing as T
-from datetime import datetime
 
-from bitrat.console import ExitCode, get_argument_parser
-from bitrat.database import (
+from .console import ExitCode, get_argument_parser
+from .database import (
     Record,
     count_records,
     delete_record,
@@ -21,11 +20,11 @@ from bitrat.database import (
     vacuum_database,
     yield_records,
 )
-from bitrat.types import PathType
-from bitrat.utils import get_path, hexlify
+from .types import PathType
+from .utils import get_path, get_system_timezone, hexlify
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True, slots=True)
 class HashResult:
     hash: bytes
     modified: float
@@ -48,13 +47,13 @@ def get_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> HashResult
     return HashResult(hash_.digest(), modified)
 
 
-stderr = functools.partial(print, file=sys.stderr)
+_stderr = functools.partial(print, file=sys.stderr)
 
 
 def check_files(
     database: sqlite3.Connection, executor: concurrent.futures.ProcessPoolExecutor, arguments: argparse.Namespace
 ) -> ExitCode:
-    exit_code = ExitCode.Success
+    exit_code = ExitCode.SUCCESS
     database_changes = 0
 
     def maybe_commit() -> None:
@@ -67,7 +66,7 @@ def check_files(
     cursor.arraysize = arguments.save_every
     target_path = get_path(arguments.path)
     database_path = get_database_path(target_path)
-    futures: T.Dict[concurrent.futures.Future, Record] = {}
+    futures: dict[concurrent.futures.Future[HashResult], Record] = {}
 
     print(f"Checking against {count_records(cursor)} records from {str(database_path)!r}...")
     for record in yield_records(cursor):
@@ -86,14 +85,13 @@ def check_files(
     for index, future in enumerate(concurrent.futures.as_completed(futures), start=1):
         record = futures.pop(future)
 
-        # pylint: disable=broad-except
         try:
             result = future.result()
         except FileNotFoundError:
-            # File disappeared before the hash was calculated, the record will be removed during the next run
+            # File disappeared before the hash was calculated, the record will be removed during the next run.
             continue
-        except Exception as error:
-            stderr(f"\t- ({index}/{future_count}) Error while hashing {record.path!r}: {error}")
+        except Exception as error:  # noqa: BLE001
+            _stderr(f"\t- ({index}/{future_count}) Error while hashing {record.path!r}: {error}")
             continue
 
         hexdigest = hexlify(result.hash)
@@ -102,11 +100,11 @@ def check_files(
             update_record(cursor, record.path, result.hash, result.modified)
             database_changes += 1
         elif record.hash != result.hash:
-            modified_date = datetime.fromtimestamp(result.modified)
-            stderr(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
-            stderr(f"\t\tRecorded hash: {record.hash_hexdigest!r} at {record.modified_date}")
-            stderr(f"\t\tCurrent hash:  {hexdigest!r} at {modified_date}")
-            exit_code = ExitCode.Failure
+            modified_date = datetime.datetime.fromtimestamp(result.modified, tz=get_system_timezone())
+            _stderr(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
+            _stderr(f"\t\tRecorded hash: {record.hash_hexdigest!r} at {record.modified_date}")
+            _stderr(f"\t\tCurrent hash:  {hexdigest!r} at {modified_date}")
+            exit_code = ExitCode.FAILURE
 
         maybe_commit()
 
@@ -118,7 +116,7 @@ def check_files(
 def update_files(
     database: sqlite3.Connection, executor: concurrent.futures.ProcessPoolExecutor, arguments: argparse.Namespace
 ) -> ExitCode:
-    exit_code = ExitCode.Success
+    exit_code = ExitCode.SUCCESS
     database_changes = 0
 
     def maybe_commit() -> None:
@@ -130,7 +128,7 @@ def update_files(
     target_path = get_path(arguments.path)
     cursor = database.cursor()
     database_path = get_database_path(target_path)
-    futures: T.Dict[concurrent.futures.Future, pathlib.Path] = {}
+    futures: dict[concurrent.futures.Future[HashResult], pathlib.Path] = {}
 
     print(f"Checking for new files in {str(target_path)!r}...")
     for path in target_path.rglob("*"):
@@ -143,7 +141,7 @@ def update_files(
             if record_exists(cursor, relative_path):
                 continue
         except UnicodeEncodeError as error:
-            stderr(f"\t- Problematic filename {relative_path!r}: {error}, skipping")
+            _stderr(f"\t- Problematic filename {relative_path!r}: {error}, skipping")
             continue
 
         future = executor.submit(get_hash, path, arguments.hash_algorithm, arguments.chunk_size)
@@ -154,14 +152,14 @@ def update_files(
         path = futures.pop(future)
         relative_path = str(path.relative_to(target_path))
 
-        # pylint: disable=broad-except
+        # Blind except: future.result() can raise any exception from the worker process.
         try:
             result = future.result()
         except FileNotFoundError:
-            # File disappeared before the hash was calculated
+            # File disappeared before the hash was calculated.
             continue
-        except Exception as error:
-            stderr(f"\t- ({index}/{future_count}) Error while hashing {relative_path!r}: {error}")
+        except Exception as error:  # noqa: BLE001
+            _stderr(f"\t- ({index}/{future_count}) Error while hashing {relative_path!r}: {error}")
             continue
 
         print(f"\t- ({index}/{future_count}) Adding record for {relative_path!r}")
@@ -182,7 +180,7 @@ def run(arguments: argparse.Namespace) -> ExitCode:
 
     if arguments.check:
         exit_code = check_files(database, executor, arguments)
-        if exit_code is not ExitCode.Success:
+        if exit_code is not ExitCode.SUCCESS:
             return exit_code
 
     exit_code = update_files(database, executor, arguments)

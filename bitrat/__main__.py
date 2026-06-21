@@ -1,3 +1,3 @@
-from bitrat.core import main
+from .core import main
 
 main()

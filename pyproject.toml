@@ -1,34 +1,38 @@
-[tool.poetry]
-name = "Bitrat"
+[project]
+name = "bitrat"
 version = "0.1.2"
-description = ""
-authors = ["cryzed <cryzed@googlemail.com>"]
+description = "An alternative to Bitrot for detecting file bitrot"
+requires-python = ">=3.12"
 
-[tool.poetry.scripts]
+[project.scripts]
 bitrat = "bitrat.__main__:main"
 
-[tool.poetry.dependencies]
-python = "^3.9"
+[dependency-groups]
+dev = [
+    "basedpyright>=1.39.2",
+    "ruff>=0.15.11",
+]
 
-[tool.poetry.group.dev.dependencies]
-mypy = "^1.9.0"
-ruff = "^0.3.4"
+[tool.uv]
+package = true
+exclude-newer = "7 days"
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py312"
 line-length = 120
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
 
+[tool.ruff.lint]
+# Enabled: BLE (blind except), I (isort), PIE (various improvements),
+# RUF (ruff-specific), S (security/bandit), UP (pyupgrade).
+extend-select = ["BLE", "I", "PIE", "RUF", "S", "UP"]
+# S101: assert used. Tests rely on assert.
+# S108: temporary file default permissions. This is overly strict for dev tools.
+# S404: subprocess imported. We review subprocess use directly.
+# S603: subprocess without shell equals true. We use list arguments and shell equals false.
+ignore = ["S101", "S108", "S404", "S603"]
+
 [tool.ruff.lint.isort]
 split-on-trailing-comma = false
-
-[tool.mypy]
-ignore_missing_imports = true
-warn_redundant_casts = true
-
-
-[build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"

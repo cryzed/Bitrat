@@ -1,0 +1,9 @@
+{
+  "typeCheckingMode": "recommended",
+  "useLibraryCodeForTypes": true,
+  "reportUnknownMemberType": "none",
+  "reportUnusedCallResult": "none",
+  "reportUnusedParameter": "none",
+  "reportAny": "none",
+  "exclude": [".venv", "**/typeshed-fallback/**"]
+}

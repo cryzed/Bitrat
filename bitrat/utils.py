@@ -1,8 +1,9 @@
 import binascii
+import datetime
 import os
 import pathlib
 
-from bitrat.types import PathType
+from .types import PathType
 
 
 def get_path(path: PathType) -> pathlib.Path:
@@ -11,3 +12,7 @@ def get_path(path: PathType) -> pathlib.Path:
 
 def hexlify(data: bytes) -> str:
     return binascii.hexlify(data).decode("ASCII")
+
+
+def get_system_timezone() -> datetime.tzinfo | None:
+    return datetime.datetime.now().astimezone().tzinfo

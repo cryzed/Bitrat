@@ -6,8 +6,8 @@ import os
 
 @enum.unique
 class ExitCode(enum.IntEnum):
-    Success = 0
-    Failure = 1
+    SUCCESS = 0
+    FAILURE = 1
 
 
 def get_argument_parser() -> argparse.ArgumentParser:
