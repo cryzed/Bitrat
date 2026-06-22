@@ -119,7 +119,8 @@ def check_files(
                 maybe_commit()
 
     # Exhaust rest of futures
-    for future, (record, index) in pending_futures.items():
+    for future in concurrent.futures.as_completed(tuple(pending_futures)):
+        record, index = pending_futures.pop(future)
         process_completed_future(future, record, index)
         maybe_commit()
 
@@ -193,7 +194,8 @@ def update_files(
                 maybe_commit()
 
     # Exhaust rest of futures
-    for future, (path, index) in pending_futures.items():
+    for future in concurrent.futures.as_completed(tuple(pending_futures)):
+        path, index = pending_futures.pop(future)
         process_completed_future(future, path, index)
         maybe_commit()
 
