@@ -93,12 +93,9 @@ def check_files(
     read_cursor.arraysize = arguments.save_every
     target_path = get_path(arguments.path)
     database_path = get_database_path(target_path)
-    pending_futures: dict[concurrent.futures.Future[HashResult], Record] = {}
-
+    pending_futures: dict[concurrent.futures.Future[HashResult], tuple[Record, int]] = {}
     print(f"Checking against {count_records(read_cursor)} records from {str(database_path)!r}...")
-    last_index = 0
     for index, record in enumerate(yield_records(read_cursor)):
-        last_index = index
         full_record_path = target_path / record.path
         if not full_record_path.is_file():
             print(f"\t- ({index}) Deleting record for {record.path!r}: no such file")
@@ -108,7 +105,7 @@ def check_files(
             continue
 
         future = executor.submit(get_hash, full_record_path, arguments.hash_algorithm, arguments.chunk_size)
-        pending_futures[future] = record
+        pending_futures[future] = record, index
 
         # Keep the count of pending futures bounded to avoid blowing up memory; Use a llop and FIRST_COMPLETED so we
         # don't wait for a long-running future the whole time
@@ -117,13 +114,12 @@ def check_files(
                 tuple(pending_futures), return_when=concurrent.futures.FIRST_COMPLETED
             )
             for future in done_futures:
-                record = pending_futures.pop(future)
+                record, index = pending_futures.pop(future)
                 process_completed_future(future, record, index)
                 maybe_commit()
 
     # Exhaust rest of futures
-    for index, future in enumerate(concurrent.futures.as_completed(tuple(pending_futures)), start=last_index + 1):
-        record = pending_futures.pop(future)
+    for future, (record, index) in pending_futures.items():
         process_completed_future(future, record, index)
         maybe_commit()
 
@@ -141,7 +137,6 @@ def update_files(
 
     def maybe_commit() -> None:
         nonlocal database_changes
-
         if database_changes >= arguments.save_every:
             database.commit()
             database_changes = 0
@@ -169,12 +164,9 @@ def update_files(
         database_changes += 1
 
     database_path = get_database_path(target_path)
-    pending_futures: dict[concurrent.futures.Future[HashResult], pathlib.Path] = {}
+    pending_futures: dict[concurrent.futures.Future[HashResult], tuple[pathlib.Path, int]] = {}
     print(f"Checking for new files in {str(target_path)!r}...")
-
-    last_index = 0
     for index, path in enumerate(target_path.rglob("*")):
-        last_index = index
         if path == database_path or not path.is_file():
             continue
 
@@ -187,7 +179,7 @@ def update_files(
             continue
 
         future = executor.submit(get_hash, path, arguments.hash_algorithm, arguments.chunk_size)
-        pending_futures[future] = path
+        pending_futures[future] = path, index
 
         # Keep the count of pending futures bounded to avoid blowing up memory; Use a llop and FIRST_COMPLETED so we
         # don't wait for a long-running future the whole time
@@ -196,13 +188,12 @@ def update_files(
                 tuple(pending_futures), return_when=concurrent.futures.FIRST_COMPLETED
             )
             for future in done_futures:
-                path = pending_futures.pop(future)
+                path, index = pending_futures.pop(future)
                 process_completed_future(future, path, index)
                 maybe_commit()
 
     # Exhaust rest of futures
-    for index, future in enumerate(concurrent.futures.as_completed(tuple(pending_futures)), start=last_index + 1):
-        path = pending_futures.pop(future)
+    for future, (path, index) in pending_futures.items():
         process_completed_future(future, path, index)
         maybe_commit()
 
