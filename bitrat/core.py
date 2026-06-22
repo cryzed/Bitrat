@@ -58,56 +58,73 @@ def check_files(
 
     def maybe_commit() -> None:
         nonlocal database_changes
-        if database_changes % arguments.save_every == 0:
+        if database_changes >= arguments.save_every:
             database.commit()
             database_changes = 0
 
+    update_cursor = database.cursor()
+
+    def process_completed_future(future: concurrent.futures.Future[HashResult], record: Record, index: int) -> None:
+        nonlocal exit_code
+        nonlocal database_changes
+
+        try:
+            result = future.result()
+        except FileNotFoundError:
+            # File disappeared before the hash was calculated, the record will be removed during the next run.
+            return
+        except Exception as error:  # noqa: BLE001
+            _stderr(f"\t- ({index}) Error while hashing {record.path!r}: {error}")
+            return
+
+        hexdigest = hexlify(result.hash)
+        if record.modified != result.modified:
+            print(f"\t- ({index}) Updating record for {record.path!r}: {hexdigest!r}")
+            update_record(update_cursor, record.path, result.hash, result.modified)
+            database_changes += 1
+        elif record.hash != result.hash:
+            modified_date = datetime.datetime.fromtimestamp(result.modified, tz=get_system_timezone())
+            _stderr(f"\t- ({index}) Bitrot detected in {record.path!r}!")
+            _stderr(f"\t\tRecorded hash: {record.hash_hexdigest!r} at {record.modified_date}")
+            _stderr(f"\t\tCurrent hash:  {hexdigest!r} at {modified_date}")
+            exit_code = ExitCode.FAILURE
+
     read_cursor = database.cursor()
     read_cursor.arraysize = arguments.save_every
-    update_cursor = database.cursor()
     target_path = get_path(arguments.path)
     database_path = get_database_path(target_path)
-    futures: dict[concurrent.futures.Future[HashResult], Record] = {}
+    pending_futures: dict[concurrent.futures.Future[HashResult], Record] = {}
 
     print(f"Checking against {count_records(read_cursor)} records from {str(database_path)!r}...")
-    for record in yield_records(read_cursor):
+    last_index = 0
+    for index, record in enumerate(yield_records(read_cursor)):
+        last_index = index
         full_record_path = target_path / record.path
         if not full_record_path.is_file():
-            print(f"\t- Deleting record for {record.path!r}: no such file")
+            print(f"\t- ({index}) Deleting record for {record.path!r}: no such file")
             delete_record(update_cursor, record.path)
             database_changes += 1
             maybe_commit()
             continue
 
         future = executor.submit(get_hash, full_record_path, arguments.hash_algorithm, arguments.chunk_size)
-        futures[future] = record
-        maybe_commit()
+        pending_futures[future] = record
 
-    future_count = len(futures)
-    for index, future in enumerate(concurrent.futures.as_completed(futures), start=1):
-        record = futures.pop(future)
+        # Keep the count of pending futures bounded to avoid blowing up memory; Use a llop and FIRST_COMPLETED so we
+        # don't wait for a long-running future the whole time
+        while len(pending_futures) >= arguments.save_every:
+            done_futures, _ = concurrent.futures.wait(
+                tuple(pending_futures), return_when=concurrent.futures.FIRST_COMPLETED
+            )
+            for future in done_futures:
+                record = pending_futures.pop(future)
+                process_completed_future(future, record, index)
+                maybe_commit()
 
-        try:
-            result = future.result()
-        except FileNotFoundError:
-            # File disappeared before the hash was calculated, the record will be removed during the next run.
-            continue
-        except Exception as error:  # noqa: BLE001
-            _stderr(f"\t- ({index}/{future_count}) Error while hashing {record.path!r}: {error}")
-            continue
-
-        hexdigest = hexlify(result.hash)
-        if record.modified != result.modified:
-            print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest!r}")
-            update_record(update_cursor, record.path, result.hash, result.modified)
-            database_changes += 1
-        elif record.hash != result.hash:
-            modified_date = datetime.datetime.fromtimestamp(result.modified, tz=get_system_timezone())
-            _stderr(f"\t- ({index}/{future_count}) Bitrot detected in {record.path!r}!")
-            _stderr(f"\t\tRecorded hash: {record.hash_hexdigest!r} at {record.modified_date}")
-            _stderr(f"\t\tCurrent hash:  {hexdigest!r} at {modified_date}")
-            exit_code = ExitCode.FAILURE
-
+    # Exhaust rest of futures
+    for index, future in enumerate(concurrent.futures.as_completed(tuple(pending_futures)), start=last_index + 1):
+        record = pending_futures.pop(future)
+        process_completed_future(future, record, index)
         maybe_commit()
 
     database.commit()
@@ -124,51 +141,69 @@ def update_files(
 
     def maybe_commit() -> None:
         nonlocal database_changes
-        if database_changes % arguments.save_every == 0:
+
+        if database_changes > arguments.save_every == 0:
             database.commit()
             database_changes = 0
 
     target_path = get_path(arguments.path)
+
+    # Don't need separate cursos for this: both queries are single-record actions
     cursor = database.cursor()
-    database_path = get_database_path(target_path)
-    futures: dict[concurrent.futures.Future[HashResult], pathlib.Path] = {}
 
-    print(f"Checking for new files in {str(target_path)!r}...")
-    for path in target_path.rglob("*"):
-        if path == database_path or not path.is_file():
-            continue
-
+    def process_completed_future(future: concurrent.futures.Future[HashResult], path: pathlib.Path, index: int) -> None:
+        nonlocal database_changes
         relative_path = str(path.relative_to(target_path))
 
-        try:
-            if record_exists(cursor, relative_path):
-                continue
-        except UnicodeEncodeError as error:
-            _stderr(f"\t- Problematic filename {relative_path!r}: {error}, skipping")
-            continue
-
-        future = executor.submit(get_hash, path, arguments.hash_algorithm, arguments.chunk_size)
-        futures[future] = path
-
-    future_count = len(futures)
-    for index, future in enumerate(concurrent.futures.as_completed(futures), start=1):
-        path = futures.pop(future)
-        relative_path = str(path.relative_to(target_path))
-
-        # Blind except: future.result() can raise any exception from the worker process.
         try:
             result = future.result()
         except FileNotFoundError:
             # File disappeared before the hash was calculated.
-            continue
+            return
         except Exception as error:  # noqa: BLE001
-            _stderr(f"\t- ({index}/{future_count}) Error while hashing {relative_path!r}: {error}")
-            continue
+            _stderr(f"\t- ({index}) Error while hashing {relative_path!r}: {error}")
+            return
 
-        print(f"\t- ({index}/{future_count}) Adding record for {relative_path!r}")
+        print(f"\t- ({index}) Adding record for {relative_path!r}")
         update_record(cursor, relative_path, result.hash, result.modified)
         database_changes += 1
 
+    database_path = get_database_path(target_path)
+    pending_futures: dict[concurrent.futures.Future[HashResult], pathlib.Path] = {}
+    print(f"Checking for new files in {str(target_path)!r}...")
+
+    last_index = 0
+    for index, path in enumerate(target_path.rglob("*")):
+        last_index = index
+        if path == database_path or not path.is_file():
+            continue
+
+        relative_path = str(path.relative_to(target_path))
+        try:
+            if record_exists(cursor, relative_path):
+                continue
+        except UnicodeEncodeError as error:
+            _stderr(f"\t- ({index}) Problematic filename {relative_path!r}: {error}, skipping")
+            continue
+
+        future = executor.submit(get_hash, path, arguments.hash_algorithm, arguments.chunk_size)
+        pending_futures[future] = path
+
+        # Keep the count of pending futures bounded to avoid blowing up memory; Use a llop and FIRST_COMPLETED so we
+        # don't wait for a long-running future the whole time
+        while len(pending_futures) >= arguments.save_every:
+            done_futures, _ = concurrent.futures.wait(
+                tuple(pending_futures), return_when=concurrent.futures.FIRST_COMPLETED
+            )
+            for future in done_futures:
+                path = pending_futures.pop(future)
+                process_completed_future(future, path, index)
+                maybe_commit()
+
+    # Exhaust rest of futures
+    for index, future in enumerate(concurrent.futures.as_completed(tuple(pending_futures)), start=last_index + 1):
+        path = pending_futures.pop(future)
+        process_completed_future(future, path, index)
         maybe_commit()
 
     database.commit()
