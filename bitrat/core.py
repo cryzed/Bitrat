@@ -62,19 +62,21 @@ def check_files(
             database.commit()
             database_changes = 0
 
-    cursor = database.cursor()
-    cursor.arraysize = arguments.save_every
+    read_cursor = database.cursor()
+    read_cursor.arraysize = arguments.save_every
+    update_cursor = database.cursor()
     target_path = get_path(arguments.path)
     database_path = get_database_path(target_path)
     futures: dict[concurrent.futures.Future[HashResult], Record] = {}
 
-    print(f"Checking against {count_records(cursor)} records from {str(database_path)!r}...")
-    for record in yield_records(cursor):
+    print(f"Checking against {count_records(read_cursor)} records from {str(database_path)!r}...")
+    for record in yield_records(read_cursor):
         full_record_path = target_path / record.path
         if not full_record_path.is_file():
             print(f"\t- Deleting record for {record.path!r}: no such file")
-            delete_record(cursor, record.path)
+            delete_record(update_cursor, record.path)
             database_changes += 1
+            maybe_commit()
             continue
 
         future = executor.submit(get_hash, full_record_path, arguments.hash_algorithm, arguments.chunk_size)
@@ -97,7 +99,7 @@ def check_files(
         hexdigest = hexlify(result.hash)
         if record.modified != result.modified:
             print(f"\t- ({index}/{future_count}) Updating record for {record.path!r}: {hexdigest!r}")
-            update_record(cursor, record.path, result.hash, result.modified)
+            update_record(update_cursor, record.path, result.hash, result.modified)
             database_changes += 1
         elif record.hash != result.hash:
             modified_date = datetime.datetime.fromtimestamp(result.modified, tz=get_system_timezone())
@@ -109,7 +111,8 @@ def check_files(
         maybe_commit()
 
     database.commit()
-    cursor.close()
+    read_cursor.close()
+    update_cursor.close()
     return exit_code
 
 
