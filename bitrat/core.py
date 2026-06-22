@@ -142,7 +142,7 @@ def update_files(
     def maybe_commit() -> None:
         nonlocal database_changes
 
-        if database_changes > arguments.save_every == 0:
+        if database_changes >= arguments.save_every:
             database.commit()
             database_changes = 0
 
