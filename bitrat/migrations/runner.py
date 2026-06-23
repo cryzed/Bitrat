@@ -50,7 +50,7 @@ def run_migrations(cursor: sqlite3.Cursor) -> None:
     """
     for module_name in _MIGRATION_MODULES:
         # Import lazily to avoid circular imports with __init__.py.
-        module = importlib.import_module(f".{module_name}", package="bitrat.migrations")
+        module = importlib.import_module(f".{module_name}", package=__package__)
 
         if not isinstance(module, _MigrationModule):
             raise TypeError(f"{module_name!r} does not implement migration protocol")
