@@ -7,15 +7,16 @@ import hashlib
 import pathlib
 import sqlite3
 import sys
+import time
 
 from .console import ExitCode, get_argument_parser
 from .database import (
     Record,
-    count_records,
     delete_record,
     get_database,
     get_database_path,
     record_exists,
+    update_last_checked,
     update_record,
     vacuum_database,
     yield_records,
@@ -53,6 +54,7 @@ def check_files(
 ) -> ExitCode:
     exit_code = ExitCode.SUCCESS
     database_changes = 0
+    files_checked = 0
 
     def maybe_commit() -> None:
         nonlocal database_changes
@@ -65,6 +67,7 @@ def check_files(
     def process_completed_future(future: concurrent.futures.Future[HashResult], record: Record, index: int) -> None:
         nonlocal exit_code
         nonlocal database_changes
+        nonlocal files_checked
 
         full_path = target_path / record.path
         try:
@@ -88,13 +91,21 @@ def check_files(
             _stderr(f"\t\tCurrent hash:  {hexdigest!r} at {modified_date}")
             exit_code = ExitCode.FAILURE
 
+        # Mark this file as checked.
+        update_last_checked(update_cursor, record.path, time.time())
+        database_changes += 1
+        files_checked += 1
+
     read_cursor = database.cursor()
     read_cursor.arraysize = arguments.save_every
     target_path: pathlib.Path = arguments.path
     database_path = get_database_path(target_path)
     pending_futures: dict[concurrent.futures.Future[HashResult], tuple[Record, int]] = {}
-    print(f"Checking against {count_records(read_cursor)} records from {str(database_path)!r}...")
-    for index, record in enumerate(yield_records(read_cursor)):
+
+    # Determine which records to check based on last_checked threshold.
+    since_last_check: int = arguments.since_last_check
+    last_check_before = time.time() - since_last_check
+    for index, record in enumerate(yield_records(read_cursor, last_check_before)):
         full_path = target_path / record.path
         if not full_path.is_file():
             print(f"\t- ({index}) Deleting record for {str(full_path)!r}: no such file")
@@ -123,6 +134,7 @@ def check_files(
         process_completed_future(future, record, index)
         maybe_commit()
 
+    print(f"Checked {files_checked} files from {str(database_path)!r}")
     database.commit()
     read_cursor.close()
     update_cursor.close()
@@ -175,7 +187,7 @@ def update_files(
             if record_exists(cursor, relative_path):
                 continue
         except UnicodeEncodeError as error:
-            _stderr(f"\t- ({index}) Problematic filename {str(target_path / relative_path)!r}: {error}, skipping")
+            _stderr(f"\t- ({index}) Problematic filename {str(path)!r}: {error}, skipping")
             continue
 
         future = executor.submit(get_hash, path, arguments.hash_algorithm, arguments.chunk_size)

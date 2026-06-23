@@ -41,4 +41,10 @@ def get_argument_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Skip the integrity check phase; only add or update files",
     )
+    parser.add_argument(
+        "--since-last-check",
+        type=int,
+        default=86400,
+        help="Only check files not verified in the last N seconds (default: 86400 = 24 hours)",
+    )
     return parser
