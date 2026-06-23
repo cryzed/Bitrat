@@ -4,8 +4,7 @@ import pathlib
 import sqlite3
 from collections import abc
 
-from .types import PathType
-from .utils import get_path, get_system_timezone, hexlify
+from .utils import get_system_timezone, hexlify
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -23,12 +22,11 @@ class Record:
         return datetime.datetime.fromtimestamp(self.modified, tz=get_system_timezone())
 
 
-def get_database_path(target_path: PathType) -> pathlib.Path:
-    return get_path(target_path) / ".bitrot.db"
+def get_database_path(target_path: pathlib.Path) -> pathlib.Path:
+    return target_path / ".bitrot.db"
 
 
-def get_database(path: PathType) -> sqlite3.Connection:
-    path = get_path(path)
+def get_database(path: pathlib.Path) -> sqlite3.Connection:
     if path.is_file():
         return sqlite3.connect(path)
 

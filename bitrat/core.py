@@ -4,6 +4,7 @@ import dataclasses
 import datetime
 import functools
 import hashlib
+import pathlib
 import sqlite3
 import sys
 
@@ -19,8 +20,7 @@ from .database import (
     vacuum_database,
     yield_records,
 )
-from .types import PathType
-from .utils import get_path, get_system_timezone, hexlify
+from .utils import get_system_timezone, hexlify
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -29,8 +29,7 @@ class HashResult:
     modified: float
 
 
-def get_hash(path: PathType, hash_algorithm: str, chunk_size: int) -> HashResult:
-    path = get_path(path)
+def get_hash(path: pathlib.Path, hash_algorithm: str, chunk_size: int) -> HashResult:
     hash_ = hashlib.new(hash_algorithm)
 
     # Get the modified time immediately before hashing, so there's a reduced possibility of the timestamp and hash
@@ -91,7 +90,7 @@ def check_files(
 
     read_cursor = database.cursor()
     read_cursor.arraysize = arguments.save_every
-    target_path = get_path(arguments.path)
+    target_path: pathlib.Path = arguments.path
     database_path = get_database_path(target_path)
     pending_futures: dict[concurrent.futures.Future[HashResult], tuple[Record, int]] = {}
     print(f"Checking against {count_records(read_cursor)} records from {str(database_path)!r}...")
@@ -142,7 +141,7 @@ def update_files(
             database.commit()
             database_changes = 0
 
-    target_path = get_path(arguments.path)
+    target_path: pathlib.Path = arguments.path
 
     # Don't need separate cursos for this: both queries are single-record actions
     cursor = database.cursor()
@@ -205,7 +204,7 @@ def update_files(
 
 
 def run(arguments: argparse.Namespace) -> ExitCode:
-    target_path = get_path(arguments.path)
+    target_path: pathlib.Path = arguments.path
     database = get_database(get_database_path(target_path))
     executor = concurrent.futures.ProcessPoolExecutor(max_workers=arguments.workers)
 
